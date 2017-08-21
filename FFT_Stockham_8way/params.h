@@ -1,1 +1,0 @@
-#define NBITS 12

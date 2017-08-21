@@ -9,7 +9,7 @@
 
 #include "params.h"
 
-//#define REORDER
+
 #define WARP 32
 
 
@@ -17,104 +17,84 @@ int device=0;
 
 __device__ __inline__ float2 Get_W_value(int N, int m){
 	float2 ctemp;
-	ctemp.x=-cosf( 6.283185f*fdividef( (float) m, (float) N ) - 3.141592654f );
-	ctemp.y=sinf( 6.283185f*fdividef( (float) m, (float) N ) - 3.141592654f );
-	return(ctemp);
-}
-
-__device__ __inline__ float2 Get_W_value_float(float N, float m){
-	float2 ctemp;
-	ctemp.x=-cosf( 6.283185f*fdividef( m, N) - 3.141592654f );
-	ctemp.y=sinf( 6.283185f*fdividef( m, N) - 3.141592654f );
+	ctemp.x=cosf( -2.0f*3.141592654f*fdividef( (float) m, (float) N) );
+	ctemp.y=sinf( -2.0f*3.141592654f*fdividef( (float) m, (float) N) );
 	return(ctemp);
 }
 
 
-__device__ void do_FFT(float2 *s_input){ // in-place
-	float2 A_DFT_value, B_DFT_value, ftemp2, ftemp;
-	float2 WB;
+__device__ void do_FFT(float2 *s_input){
+	float2 DFT_value_even, DFT_value_odd, ftemp2, ftemp;
+	float2 W;
 	
-	int r, j, k, PoTm1, A_read_index, B_read_index, A_write_index, B_write_index, Nhalf;
-	int An, A_load_id;
+	int r, j, k, PoT, PoTm1, A_index, B_index, Nhalf;
 
 	Nhalf=FFT_LENGTH>>1;
 	
-	//-----------------------------------------------
-	//----- First N-1 iteration
-	PoTm1=1;
+	//-----> FFT
+	//--> 
 	
-	A_read_index=threadIdx.x;
-	B_read_index=threadIdx.x + Nhalf;
+	PoT=1;
+	PoTm1=0;
+	//------------------------------------------------------------
+	// First iteration
+		PoTm1=PoT;
+		PoT=PoT<<1;
 		
-	A_write_index=2*threadIdx.x;
-	B_write_index=2*threadIdx.x+1;
+		j=threadIdx.x;
+		k=0;
+		
+		W.x=1;
+		W.y=0;
 
-	A_load_id = 2*threadIdx.x;
-	An=2*threadIdx.x;
-	
-	for(r=1;r<FFT_EXP;r++){
-		An >>= 1;
-		A_load_id <<= 1;
-		A_load_id |= An & 1;
+		A_index=j*PoTm1;
+		B_index=j*PoTm1 + Nhalf;
 		
-		j=(threadIdx.x)>>(r-1);
-
-		k=PoTm1*j;
+		ftemp2=s_input[B_index];
+		ftemp=s_input[A_index];
 		
-		ftemp  = s_input[A_read_index];
-		ftemp2 = s_input[B_read_index];
+		DFT_value_even.x=ftemp.x + W.x*ftemp2.x - W.y*ftemp2.y;
+		DFT_value_even.y=ftemp.y + W.x*ftemp2.y + W.y*ftemp2.x;
 		
-		A_DFT_value.x=ftemp.x + ftemp2.x;
-		A_DFT_value.y=ftemp.y + ftemp2.y;
-		
-		WB = Get_W_value(FFT_LENGTH,k);
-		
-		B_DFT_value.x=WB.x*(ftemp.x - ftemp2.x) - WB.y*(ftemp.y - ftemp2.y);
-		B_DFT_value.y=WB.x*(ftemp.y - ftemp2.y) + WB.y*(ftemp.x - ftemp2.x);
-		
-		PoTm1=PoTm1<<1;
+		DFT_value_odd.x=ftemp.x - W.x*ftemp2.x + W.y*ftemp2.y;
+		DFT_value_odd.y=ftemp.y - W.x*ftemp2.y - W.y*ftemp2.x;
 		
 		__syncthreads();
-		s_input[A_write_index]=A_DFT_value;
-		s_input[B_write_index]=B_DFT_value;
+		s_input[j*PoT]=DFT_value_even;
+		s_input[j*PoT + PoTm1]=DFT_value_odd;
+		__syncthreads();
+	// First iteration
+	//------------------------------------------------------------
+	
+	for(r=2;r<=FFT_EXP;r++){
+		PoTm1=PoT;
+		PoT=PoT<<1;
+		
+		j=threadIdx.x>>(r-1);
+		k=threadIdx.x & (PoTm1-1);
+		
+		W=Get_W_value(PoT,k);
+
+		A_index=j*PoTm1 + k;
+		B_index=j*PoTm1 + k + Nhalf;
+		
+		ftemp2=s_input[B_index];
+		ftemp=s_input[A_index];
+		
+		DFT_value_even.x=ftemp.x + W.x*ftemp2.x - W.y*ftemp2.y;
+		DFT_value_even.y=ftemp.y + W.x*ftemp2.y + W.y*ftemp2.x;
+		
+		DFT_value_odd.x=ftemp.x - W.x*ftemp2.x + W.y*ftemp2.y;
+		DFT_value_odd.y=ftemp.y - W.x*ftemp2.y - W.y*ftemp2.x;
+		
+		__syncthreads();
+		s_input[j*PoT + k]=DFT_value_even;
+		s_input[j*PoT + k + PoTm1]=DFT_value_odd;
 		__syncthreads();
 	}
-	A_load_id &= FFT_LENGTH-1;
-	//----- First N-1 iteration
-	//-----------------------------------------------
-	
-	
-	//-----------------------------------------------
-	//----- Last exchange
-	ftemp  = s_input[A_read_index];
-	ftemp2 = s_input[B_read_index];
-	
-	A_DFT_value.x = ftemp.x + ftemp2.x;
-	A_DFT_value.y = ftemp.y + ftemp2.y;
-	B_DFT_value.x = ftemp.x - ftemp2.x;
-	B_DFT_value.y = ftemp.y - ftemp2.y;
-	
-	__syncthreads();
-	s_input[A_write_index]=A_DFT_value;
-	s_input[B_write_index]=B_DFT_value;
-	__syncthreads();
-	//----- Last exchange
-	//-----------------------------------------------
-	
-	#ifdef REORDER
-	//-----------------------------------------------
-	//----- De-shuffle
-	ftemp=s_input[A_load_id];
-	ftemp2=s_input[A_load_id+Nhalf];
-	__syncthreads();
-	s_input[2*threadIdx.x]=ftemp;
-	s_input[2*threadIdx.x+1]=ftemp2;
-	//----- De-shuffle
-	//-----------------------------------------------
-	#endif
-	
 	//-------> END
 }
+
 
 __global__ void FFT_GPU_external(float2 *d_input, float2* d_output) {
 	extern __shared__ float2 s_input[];
@@ -122,12 +102,13 @@ __global__ void FFT_GPU_external(float2 *d_input, float2* d_output) {
 	s_input[threadIdx.x + FFT_LENGTH/2]=d_input[threadIdx.x + FFT_LENGTH/2 + blockIdx.x*FFT_LENGTH];
 	
 	__syncthreads();
-	do_FFT(s_input);
-	
+	do_FFT(s_input);	
 	__syncthreads();
+	
 	d_output[threadIdx.x + blockIdx.x*FFT_LENGTH]=s_input[threadIdx.x];
 	d_output[threadIdx.x + FFT_LENGTH/2 + blockIdx.x*FFT_LENGTH]=s_input[threadIdx.x + FFT_LENGTH/2];
 }
+
 
 __global__ void FFT_GPU_multiple(float2 *d_input, float2* d_output) {
 	extern __shared__ float2 s_input[];
@@ -137,16 +118,13 @@ __global__ void FFT_GPU_multiple(float2 *d_input, float2* d_output) {
 	__syncthreads();
 	for(int f=0;f<100;f++){
 		do_FFT(s_input);
-	}
-	
+	}	
 	__syncthreads();
+	
 	d_output[threadIdx.x + blockIdx.x*FFT_LENGTH]=s_input[threadIdx.x];
 	d_output[threadIdx.x + FFT_LENGTH/2 + blockIdx.x*FFT_LENGTH]=s_input[threadIdx.x + FFT_LENGTH/2];
 }
 
-//*****************************************************************************
-//*****************************************************************************
-//*****************************************************************************
 
 int Max_columns_in_memory_shared(int nSamples, int nSpectra) {
 	long int nColumns,maxgrid_x;
@@ -168,15 +146,16 @@ int Max_columns_in_memory_shared(int nSamples, int nSpectra) {
 
 void FFT_init(){
 	//---------> Specific nVidia stuff
-	cudaDeviceSetCacheConfig(cudaFuncCachePreferEqual);
+	cudaDeviceSetCacheConfig(cudaFuncCachePreferShared);
 	cudaDeviceSetSharedMemConfig(cudaSharedMemBankSizeEightByte);
 }
+
 
 void FFT_external_benchmark(float2 *d_input, float2 *d_output, int nSamples, int nSpectra, double *FFT_time){
 	GpuTimer timer;
 	//---------> CUDA block and CUDA grid parameters
 	int nCUDAblocks_x=nSpectra;
-	int nCUDAblocks_y=1; //Head size
+	int nCUDAblocks_y=1;
 	
 	dim3 gridSize(nCUDAblocks_x, nCUDAblocks_y, 1);
 	dim3 blockSize(nSamples/2, 1, 1);
@@ -202,11 +181,6 @@ void FFT_multiple_benchmark(float2 *d_input, float2 *d_output, int nSamples, int
 }
 
 
-//*****************************************************************************
-//*****************************************************************************
-//*****************************************************************************
-
-
 int GPU_FFT(float2 *h_input, float2 *h_output, int nSamples, int nSpectra, int nRuns){
 	//---------> Initial nVidia stuff
 	int devCount;
@@ -230,14 +204,14 @@ int GPU_FFT(float2 *h_input, float2 *h_output, int nSamples, int nSpectra, int n
 	//---------> Measurements
 	double transfer_in, transfer_out, FFT_time, FFT_external_time, FFT_multiple_time, FFT_multiple_reuse_time,cuFFT_time,FFT_multiple_reuse_registers_time;
 	double FFT_multiple_time_total, FFT_external_time_total;
-	GpuTimer timer; // if set before set device getting errors - invalid handle  
+	GpuTimer timer;
 	
 	
 	//------------------------------------------------------------------------------
 	//---------> Shared memory kernel
 	transfer_in=0.0; transfer_out=0.0; FFT_time=0.0; FFT_external_time=0.0; FFT_multiple_time=0.0; FFT_multiple_reuse_time=0.0; cuFFT_time=0.0; FFT_multiple_reuse_registers_time=0.0;
 	FFT_multiple_time_total = 0; FFT_external_time_total = 0;
-
+	
 	//---------> Memory allocation
 	if (DEBUG) printf("Device memory allocation...: \t\t");
 	float2 *d_output;
@@ -255,7 +229,7 @@ int GPU_FFT(float2 *h_input, float2 *h_output, int nSamples, int nSpectra, int n
 	timer.Stop();
 	transfer_in+=timer.Elapsed();
 	if (DEBUG) printf("done in %g ms.\n", timer.Elapsed());
-
+	
 	//-----> Compute FFT on the chunk
 	if(CUFFT){
 		//---------> FFT
@@ -285,13 +259,13 @@ int GPU_FFT(float2 *h_input, float2 *h_output, int nSamples, int nSpectra, int n
 		FFT_multiple_time = FFT_multiple_time_total/nRuns;
 		if (DEBUG) printf("done in %g ms.\n", FFT_multiple_time);
 	}
-
+    
 	if(EXTERNAL){
 		if (DEBUG) printf("FFT...: \t\t\t\t");
 		FFT_init();
 		FFT_external_time_total = 0;
 		for(int f=0; f<nRuns; f++){
-			checkCudaErrors(cudaMemcpy(d_input, h_input, input_size*sizeof(float2), cudaMemcpyHostToDevice));	
+			checkCudaErrors(cudaMemcpy(d_input, h_input, input_size*sizeof(float2), cudaMemcpyHostToDevice));
 			FFT_external_benchmark(d_input, d_output, nSamples, nSpectra, &FFT_external_time_total);
 		}
 		FFT_external_time = FFT_external_time_total/nRuns;
@@ -305,6 +279,7 @@ int GPU_FFT(float2 *h_input, float2 *h_output, int nSamples, int nSpectra, int n
 	timer.Stop();
 	transfer_out+=timer.Elapsed();
 	if (DEBUG) printf("done in %g ms.\n", timer.Elapsed());
+	
 
 	
 
@@ -315,11 +290,11 @@ int GPU_FFT(float2 *h_input, float2 *h_output, int nSamples, int nSpectra, int n
 	checkCudaErrors(cudaFree(d_input));
 	checkCudaErrors(cudaFree(d_output));
 	
-	if (DEBUG || WRITE) printf("nSpectra:%d; nSamples:%d cuFFT:%0.3f ms; FFT:%0.3f ms; FFT external:%0.3f ms; FFT multiple:%0.3f ms; FFT multiple reuse:%0.3f ms; FFT_multiple_reuse_registers_time:%0.3fms; HostToDevice:%0.3f ms; DeviceToHost:%0.3f ms\n",nSpectra,nSamples,cuFFT_time, FFT_time, FFT_external_time, FFT_multiple_time, FFT_multiple_reuse_time, FFT_multiple_reuse_registers_time, transfer_in, transfer_out);	
+	if (DEBUG || WRITE) printf("nSpectra:%d; nSamples:%d cuFFT:%0.3f ms; FFT:%0.3f ms; FFT external:%0.3f ms; FFT multiple:%0.3f ms;\n",nSpectra,nSamples,cuFFT_time, FFT_time, FFT_external_time, FFT_multiple_time);	
 	
 	if (WRITE){ 
 		char str[200];
-		sprintf(str,"GPU-FFT-Pease.dat");
+		sprintf(str,"GPU-FFT-Stockham.dat");
 		if (DEBUG) printf("\n Write results into file...\t");
 		save_time(str, nSpectra,nSamples, cuFFT_time, FFT_time, FFT_external_time, FFT_multiple_time, FFT_multiple_reuse_time, FFT_multiple_reuse_registers_time, transfer_in, transfer_out);
 		if (DEBUG) printf("\t done.\n-------------------------------------\n");

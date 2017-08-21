@@ -2,7 +2,6 @@
 #define CHECK false
 #define WRITE true
 
-
 #define CUFFT true
 #define EXTERNAL true
 #define MULTIPLE true

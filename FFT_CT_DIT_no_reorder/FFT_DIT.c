@@ -31,7 +31,17 @@ void Perform_FFT(float2 *spectra, int nChannels){
 	fftwf_execute(p);
 	fftwf_destroy_plan(p);
 }
+
+void Perform_IFFT(float2 *spectra, int nChannels){
+	int N=nChannels;
+	fftwf_plan p;
+	
+	p = fftwf_plan_dft_1d(N, (fftwf_complex *) spectra, (fftwf_complex *) spectra, FFTW_BACKWARD, FFTW_ESTIMATE);
+	fftwf_execute(p);
+	fftwf_destroy_plan(p);
+}
 #endif
+
 
 void Compare_data(float2 *GPU_result, float2 *CPU_result, int N, double *cumulative_error, double *mean_error){
 	double error;
@@ -45,6 +55,7 @@ void Compare_data(float2 *GPU_result, float2 *CPU_result, int N, double *cumulat
 	*cumulative_error=dtemp;
 	*mean_error=dtemp/N;
 }
+
 
 #ifdef CHECK_USING_FFTW
 void Full_FFT_check(float2 *GPU_result, float2 *input_data, int nSamples, int nSpectra, double *cumulative_error, double *mean_error){
@@ -78,21 +89,7 @@ void Full_FFT_check(float2 *GPU_result, float2 *input_data, int nSamples, int nS
 
 int GPU_FFT(float2 *input, float2 *output, int nSamples, int nSpectra, int inverse);
 
-//int Max_columns_in_memory_shared(int nTaps, int nDMs);
-
-void Display_data(float2 *input, int samples){
-	
-	for(int f=0;f<samples;f++){
-		printf("%0.4f ",(float) input[f].x);
-	}
-	printf("\n");
-	for(int f=0;f<samples;f++){
-		printf("%0.4f ",(float) input[f].y);
-	}
-	printf("\n");
-}
-
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) {	
 	if (argc!=3) {
 		printf("Argument error!\n");
 		printf("1) number of FFTs to be calculated\n");

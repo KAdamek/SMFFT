@@ -2,20 +2,16 @@
 This is a shared memory implementation of the fast Fourier transform (FFT) on CUDA GPUs for Astro-Accelerate project.
 
 
-Compile: 'make' should do that. It requires fftw library for comparisons. This dependency could be removed from FFT.c if desired.
+Compile: 'make' should do that. For comparison you need fftw library and #define CHECK_USING_FFTW in debug.h.
 
 Notes: 
-1) Codes with _no_reorder do not produce correctly ordered results, thus if compared with cuFFT of fftw they would fail. This is intended as for convolution we do not need to re-order the elements.
+1) Codes with _no_reorder do not produce correctly ordered results, thus if compared with cuFFT of fftw they would fail. This is intended as for convolution we do not need to re-order the elements. However if #define REORDER is in .cu file the FFT kernel will perform reordering operation so one can test correctness of the code.
 
-2) This was implemented as a test if convolution code could be faster if there would be FFT code callable from kernel. Thus this FFT implementation was aimed to be more flexible in sense that I avoided any FFT size dependent code, i.e. if N=1024 run this or that. I intended to try to optimize for final FFT size but it never came to that.
-
-3) Also we wanted low register count if possible in order not to burden host kernel (one which launches this FFT code) too much.
-
-4) There is, I think, a room for optimizations. For example more reuse of computed twiddle factors, try to use Radix-4, 8, ... for calculation of N=power-of-two. Higher radices would allow use of #defined values of twiddle factors more easily than current solution. Pre-compute twiddle factors for given FFT size N. 
+2) This was implemented as a test if convolution code could be faster if there would be shared memory FFT code callable from kernel. thus we wanted low register count if possible in order not to burden host kernel (one which launches this FFT code) too much.
 
 
 What is what (files and functions throughout implementations):
-FFT.c
+FFT*.c
 Host related stuff. Allocated host memory and generate random data. Also performs checks if results are correct.
 
 
@@ -24,8 +20,6 @@ Device related stuff + kernel. It allocates necessary memory on the device and t
 FFT_external_benchmark(
 float2 d_input  - complex input (time-domain vectors)
 float2 d_output - FFT result (frequency-domain vectors)
-int nSamples    - FFT size (N)
-int nSpectra    - number of time-domain vectors we want to be FFT-ied
 double FFT_time - for development
 );
 
@@ -33,16 +27,12 @@ the kernel itself FFT_GPU_external(...) requires following
 FFT_GPU_external(
 float2 d_input  - complex input (time-domain vectors)
 float2 d_output - FFT result (frequency-domain vectors)
-int N           - FFT size
-int bits        - it is an exponent of radix base, i.e. 2^bits=N
 );
 this only transfers data to shared memory, call the FFT device function and then writes data back to global memory.
 
 Function which does the FFT is 
 do_FFT(
 float2 s_input - shared memory with time-domain vector
-int N          - FFT size
-int bits       - it is an exponent of radix base, i.e. 2^bits=N
 );
 this function perform 'in-place' FFT.
 
@@ -52,28 +42,27 @@ debug.h  -  controls what will code do. Not all switches work, some might not wo
 DEBUG activate/forbids printing stuff to console
 CHECK activate/forbids checks for correctness of the output.
 WRITE activate/forbids saving results (like execution time) to file
-CUFFT activate/forbids cuFFT
-INTERNAL does not work
-EXTERNAL activate/forbids shared memory FFT
-MULTIPLE activate/forbids shared memory FFT called multiple times, might not work when number of FFT to perform (second executable argument) is too low
-MULTIPLE_REUSE does not work
-MULTIPLE_REUSE_REGISTERS does not work
 
-params.h  -  doesn't do anything mostly
+CUFFT activate/forbids cuFFT
+EXTERNAL activate/forbids shared memory FFT
+MULTIPLE activate/forbids shared memory FFT called multiple times, might not work when number of FFT to perform (first executable argument) is too low. It needs at least 100000 FFTs to be computed.
+
+CHECK_USING_FFTW - hide/unhide parts of the code needed for comparisons, which require fftw library
+
+params.h  	- #define FFT_LENGTH which is FFT length to be computed it must be power-of-two (256, 512, 1024, 2048)
+			- #define FFT_EXP is exponent of FFT length (FFT_LENGTH=2^FFT_EXP)
 timer.h - utilities
 utils_cuda.h - utilities
 utils_file.h - utilities
 
-benchmark.sh  -  will do some basic benchmarking
-
-
 What is what (implementations):
 
-FFT_CT is Cooley-Tukey FFT DIT
+FFT_CT_DIF is Cooley-Tukey FFT decimation in frequency code (DIF)
+FFT_CT_DIT is Cooley-Tukey FFT decimation in time code (DIT)
 FFT_Pease is Pease FFT DIF
 FFT_Stockham is Stockham autosort FFT
-FFT_Stockham_4way is Stockham autosort FFT with 4 FFT elements calculated per thread. It is performing better but has higher register usage. Something similar (different algorithm) was used in convolution kernel.
-FFT_Stockham_8way is Stockham autosort FFT with 8 FFT elements calculated per thread. It performs even better then 4way but register usage was too high and whole convolution kernel was slower then with 4way.
+FFT_Stockham_4elem is Stockham autosort FFT with 4 FFT elements calculated per thread. It is performing better but has higher register usage. Something similar (different algorithm) was used in convolution kernel.
+FFT_Stockham_8elem is Stockham autosort FFT with 8 FFT elements calculated per thread. It performs even better then 4elem but register usage was too high and whole convolution kernel was slower then with 4elem.
 FFT_Stockham_Radix-R is Stockham autosort FFT which can work with N=R*2^bits FFT sizes. So it is semi-non power-of-two. .cu file contain kernel for arbitrary radix, i.e. N=R^bits, but it is very slow and naive. In params.h there must be #define RADIX defined. For example 3.
 
 Karel Adamek

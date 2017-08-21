@@ -78,20 +78,6 @@ void Full_FFT_check(float2 *GPU_result, float2 *input_data, int nSamples, int nS
 
 int GPU_FFT(float2 *input, float2 *output, int nSamples, int nSpectra, int inverse);
 
-//int Max_columns_in_memory_shared(int nTaps, int nDMs);
-
-void Display_data(float2 *input, int samples){
-	
-	for(int f=0;f<samples;f++){
-		printf("%0.4f ",(float) input[f].x);
-	}
-	printf("\n");
-	for(int f=0;f<samples;f++){
-		printf("%0.4f ",(float) input[f].y);
-	}
-	printf("\n");
-}
-
 int main(int argc, char* argv[]) {
 	if (argc!=3) {
 		printf("Argument error!\n");
@@ -104,9 +90,13 @@ int main(int argc, char* argv[]) {
 	int nSamples = FFT_LENGTH;
 	int nSpectra = strtol(argv[1],&pEnd,10);
 	int nRuns    = strtol(argv[2],&pEnd,10);
+
 	
 	int input_size=nSpectra*nSamples;
 	int output_size=nSpectra*nSamples; if(nSamples<32) output_size=nSpectra*32;
+	
+
+	if (DEBUG) printf("\t\tWelcome\n");
 
 	float2 *h_input;
 	float2 *h_output;
@@ -135,10 +125,9 @@ int main(int argc, char* argv[]) {
 	
 	GPU_FFT(h_input, h_output, nSamples, nSpectra, nRuns);
 
-	if (CHECK){
+	if (DEBUG && CHECK){
 		#ifdef CHECK_USING_FFTW
 		double cumulative_error,mean_error;
-		printf("\nTesting FFT...\n");
 		Full_FFT_check(h_output, h_input, nSamples, nSpectra, &cumulative_error, &mean_error);
 		printf("Cumulative Error: %e, Mean Error: %e;\n",cumulative_error,mean_error);
 		#endif
