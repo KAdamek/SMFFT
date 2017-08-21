@@ -207,7 +207,7 @@ void FFT_multiple_benchmark(float2 *d_input, float2 *d_output, int nSamples, int
 //*****************************************************************************
 
 
-int GPU_FFT(float2 *h_input, float2 *h_output, int nSamples, int nSpectra, int nRuns){
+int GPU_FFT(float2 *h_input, float2 *h_output, int nSamples, int nSpectra, int inverse){
 	//---------> Initial nVidia stuff
 	int devCount;
 	size_t free_mem,total_mem;
@@ -229,14 +229,12 @@ int GPU_FFT(float2 *h_input, float2 *h_output, int nSamples, int nSpectra, int n
 		
 	//---------> Measurements
 	double transfer_in, transfer_out, FFT_time, FFT_external_time, FFT_multiple_time, FFT_multiple_reuse_time,cuFFT_time,FFT_multiple_reuse_registers_time;
-	double FFT_multiple_time_total, FFT_external_time_total;
 	GpuTimer timer; // if set before set device getting errors - invalid handle  
 	
 	
 	//------------------------------------------------------------------------------
 	//---------> Shared memory kernel
 	transfer_in=0.0; transfer_out=0.0; FFT_time=0.0; FFT_external_time=0.0; FFT_multiple_time=0.0; FFT_multiple_reuse_time=0.0; cuFFT_time=0.0; FFT_multiple_reuse_registers_time=0.0;
-	FFT_multiple_time_total = 0; FFT_external_time_total = 0;
 
 	//---------> Memory allocation
 	if (DEBUG) printf("Device memory allocation...: \t\t");
@@ -277,24 +275,14 @@ int GPU_FFT(float2 *h_input, float2 *h_output, int nSamples, int nSpectra, int n
 	if(MULTIPLE){
 		if (DEBUG) printf("Multiple FFT...: \t\t\t");
 		FFT_init();
-		FFT_multiple_time_total = 0;
-		for(int f=0; f<nRuns; f++){
-			checkCudaErrors(cudaMemcpy(d_input, h_input, input_size*sizeof(float2), cudaMemcpyHostToDevice));
-			FFT_multiple_benchmark(d_input, d_output, nSamples, nSpectra, &FFT_multiple_time_total);
-		}
-		FFT_multiple_time = FFT_multiple_time_total/nRuns;
+		FFT_multiple_benchmark(d_input, d_output, nSamples, nSpectra, &FFT_multiple_time);
 		if (DEBUG) printf("done in %g ms.\n", FFT_multiple_time);
 	}
 
 	if(EXTERNAL){
 		if (DEBUG) printf("FFT...: \t\t\t\t");
 		FFT_init();
-		FFT_external_time_total = 0;
-		for(int f=0; f<nRuns; f++){
-			checkCudaErrors(cudaMemcpy(d_input, h_input, input_size*sizeof(float2), cudaMemcpyHostToDevice));	
-			FFT_external_benchmark(d_input, d_output, nSamples, nSpectra, &FFT_external_time_total);
-		}
-		FFT_external_time = FFT_external_time_total/nRuns;
+		FFT_external_benchmark(d_input, d_output, nSamples, nSpectra, &FFT_external_time);
 		if (DEBUG) printf("done in %g ms.\n", FFT_external_time);
 	}
 	

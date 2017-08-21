@@ -1,7 +1,6 @@
 # AAFFT
 This is a shared memory implementation of the fast Fourier transform (FFT) on CUDA GPUs for Astro-Accelerate project.
 
-
 Compile: 'make' should do that. For comparison you need fftw library and #define CHECK_USING_FFTW in debug.h.
 
 Notes: 
@@ -54,6 +53,7 @@ params.h  	- #define FFT_LENGTH which is FFT length to be computed it must be po
 timer.h - utilities
 utils_cuda.h - utilities
 utils_file.h - utilities
+
 
 What is what (implementations):
 
