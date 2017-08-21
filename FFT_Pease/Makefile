@@ -6,21 +6,11 @@ GCC = g++
 NVCC = ${CUDA_HOME}/bin/nvcc
 
 NVCCFLAGS = -O3 -arch=sm_61 --ptxas-options=-v --use_fast_math -Xcompiler -Wextra -lineinfo
-=======
-INC := -I/usr/local/cuda/include
-LIB := -L/usr/local/cuda/lib64 -lcudart -lcufft -lcuda -lgsl -lgslcblas -lfftw3f
-
-GCC = g++
-NVCC = nvcc
-
-NVCCFLAGS = -O3 -arch=sm_52 --ptxas-options=-v --use_fast_math -Xcompiler -Wextra -lineinfo
->>>>>>> origin/master
 
 GCC_OPTS =-O3 -Wall -Wextra $(INC)
 
 EXECUTABLE = FFT.exe
 
-<<<<<<< HEAD
 ifdef reglim
 NVCCFLAGS += --maxrregcount=$(reglim)
 endif
@@ -28,9 +18,9 @@ endif
 ifdef fftw
 LIB += -lfftw3f
 endif
-=======
+
 all: clean executable
->>>>>>> origin/master
+
 
 executable: FFT.o FFT-maxwell-32bit-Pease.o Makefile
 	$(NVCC) -o $(EXECUTABLE) FFT-maxwell-32bit-Pease.o FFT.o $(LIB) $(NVCCFLAGS) 
