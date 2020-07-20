@@ -1,10 +1,10 @@
-INC := -I/usr/local/cuda/include
-LIB := -L/usr/local/cuda/lib64 -lcudart -lcufft -lcuda
+INC := -I${CUDA_HOME}/include
+LIB := -L${CUDA_HOME}/lib64 -lcudart -lcufft -lcuda
 
 # use this compilers
 # g++ just because the file write
 GCC = g++
-NVCC = nvcc
+NVCC = ${CUDA_HOME}/bin/nvcc
 
 
 ###############################################################
@@ -19,11 +19,11 @@ ANALYZE = FFT.exe
 
 all: clean analyze
 
-analyze: FFT.o FFT-maxwell-32bit-Stockham.o Makefile
-	$(NVCC) -o $(ANALYZE) FFT-maxwell-32bit-Stockham.o FFT.o $(LIB) $(NVCCFLAGS) 
+analyze: FFT.o FFT-GPU-32bit-Stockham.o Makefile
+	$(NVCC) -o $(ANALYZE) FFT-GPU-32bit-Stockham.o FFT.o $(LIB) $(NVCCFLAGS) 
 
-FFT-maxwell-32bit-Stockham.o: timer.h utils_cuda.h
-	$(NVCC) -c FFT-maxwell-32bit-Stockham.cu $(NVCCFLAGS)
+FFT-GPU-32bit-Stockham.o: timer.h utils_cuda.h
+	$(NVCC) -c FFT-GPU-32bit-Stockham.cu $(NVCCFLAGS)
 
 FFT.o: FFT.c
 	$(GCC) -c FFT.c $(GCC_OPTS)

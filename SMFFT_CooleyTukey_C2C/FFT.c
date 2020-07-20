@@ -77,27 +77,47 @@ int Compare_data(float2 *cuFFT_result, float2 *smFFT_result, int FFT_size, int n
 }
 
 
-int GPU_smFFT_4elements(float2 *h_input, float2 *h_output, int FFT_size, int nFFTs, int nRuns, double *single_ex_time, double *multi_ex_time);
-int GPU_cuFFT(float2 *h_input, float2 *h_output, int FFT_size, int nFFTs, int nRuns, double *single_ex_time);
+int GPU_smFFT_4elements(float2 *h_input, float2 *h_output, int FFT_size, int nFFTs, bool inverse, bool reorder, int nRuns, double *single_ex_time, double *multi_ex_time);
+int GPU_cuFFT(float2 *h_input, float2 *h_output, int FFT_size, int nFFTs, bool inverse, int nRuns, double *single_ex_time);
 
 int main(int argc, char* argv[]) {
-	if (argc!=4) {
+	if (argc!=6) {
 		printf("Argument error!\n");
 		printf(" 1) FFT length\n");
 		printf(" 2) number of FFTs\n");
 		printf(" 3) the number of kernel executions\n");
-		printf("For example: FFT.exe 1024 100000 20\n");
+		printf(" 4) do inverse FFT 1=yes 0=no\n");
+		printf(" 5) reorder elements to correct order 1=yes 0=no\n");
+		printf("For example: FFT.exe 1024 100000 20 0 1\n");
         return(1);
     }
 	char * pEnd;
 	
-	int FFT_size = strtol(argv[1],&pEnd,10);
-	int nFFTs    = strtol(argv[2],&pEnd,10);
-	int nRuns    = strtol(argv[3],&pEnd,10);
+	int FFT_size  = strtol(argv[1],&pEnd,10);
+	int nFFTs     = strtol(argv[2],&pEnd,10);
+	int nRuns     = strtol(argv[3],&pEnd,10);
+	int i_inverse = strtol(argv[4],&pEnd,10);
+	int i_reorder = strtol(argv[5],&pEnd,10);
+	
+	bool inverse = (i_inverse==1?true:false);
+	bool reorder = (i_reorder==1?true:false);
+	
+	if(FFT_size==32) { 
+		printf("FFT length is 32 making sure that the number of FFTs is divisible by 4. ");
+		int itemp = (int)((nFFTs + 4 - 1)/4);
+		nFFTs = itemp*4;
+		printf("New number of FFTs is %d.\n", nFFTs);
+	}
+	if(FFT_size==64) {
+		printf("FFT length is 64 making sure that the number of FFTs is divisible by 2. ");
+		int itemp = (int)((nFFTs + 2 - 1)/2);
+		nFFTs = itemp*2;
+		printf("New number of FFTs is %d.\n", nFFTs);
+	}
 	
 	int input_size  = nFFTs*FFT_size;
 	int output_size = nFFTs*FFT_size;
-	if(FFT_size<128) { printf("This FFT implementation works for N>=128.\n"); return(1); }
+	
 
 	float2 *h_input;
 	float2 *h_output_smFFT;
@@ -125,19 +145,22 @@ int main(int argc, char* argv[]) {
 	
 	//-----------> cuFFT
 	double cuFFT_execution_time;
-	GPU_cuFFT(h_input, h_output_cuFFT, FFT_size, nFFTs, nRuns, &cuFFT_execution_time);
+	GPU_cuFFT(h_input, h_output_cuFFT, FFT_size, nFFTs, inverse, nRuns, &cuFFT_execution_time);
 	
 	//-----------> custom FFT
 	double smFFT_execution_time, smFFT_multiple_execution_time;
-	GPU_smFFT_4elements(h_input, h_output_smFFT, FFT_size, nFFTs, nRuns, &smFFT_execution_time, &smFFT_multiple_execution_time);
+	GPU_smFFT_4elements(h_input, h_output_smFFT, FFT_size, nFFTs, inverse, reorder, nRuns, &smFFT_execution_time, &smFFT_multiple_execution_time);
 	
-	#ifdef TESTING
+	if(reorder){
 		double cumulative_error,mean_error;
 		int nErrors = 0;
 		nErrors = Compare_data(h_output_cuFFT, h_output_smFFT, FFT_size, nFFTs, &cumulative_error, &mean_error);
 		if(nErrors==0) printf("  FFT test:\033[1;32mPASSED\033[0m\n");
 		else printf("  FFT test:\033[1;31mFAILED\033[0m\n");
-	#endif
+	}
+	else {
+		printf("  There is no verification of the results if FFT are not reordered.\n");
+	}
 	
 	free(h_input);
 	free(h_output_smFFT);

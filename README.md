@@ -1,68 +1,94 @@
-# AAFFT
+# SMFFT
 This is a shared memory implementation of the fast Fourier transform (FFT) on CUDA GPUs for Astro-Accelerate project.
 
-Compile: 'make' should do that. For comparison you need fftw library and #define CHECK_USING_FFTW in debug.h.
+Compile: 'make' should do that.
+You may need to define CUDA_HOME parameter.
 
-Notes: 
-1) Codes with _no_reorder do not produce correctly ordered results, thus if compared with cuFFT of fftw they would fail. This is intended as for convolution we do not need to re-order the elements. However if #define REORDER is in .cu file the FFT kernel will perform reordering operation so one can test correctness of the code.
+## Implementations:
+There are two implementations of the FFT algorithm Cooley-Tukey and Stockham FFT algorithm.
+### SMFFT_CooleyTukey_C2C
+This is a implementation of the Cooley-Tukey FFT algorithm. The code is expected to be called within a GPU kernel but the wrapper used to demonstrate the its functionality can be used. 
 
-2) This was implemented as a test if convolution code could be faster if there would be shared memory FFT code callable from kernel. thus we wanted low register count if possible in order not to burden host kernel (one which launches this FFT code) too much.
+The FFT is performed by the CUDA ```__device__``` function   ```do_SMFFT_CT_DIT```, which is expects pointer to a shared memory which contains FFT stored in the float2 format where x is real part and y is the imaginary part. If the result of the FFT transform needs to be reordered into a correct order the size of the shared memory must be as given by appropriate ```FFT_Params``` class instance ```FFT_Params::fft_sm_required```. This might not be always required for example for convolutions.
 
+The CUDA kernel ```SMFFT_DIT_external``` serves as a wrapper for the SMFFT device function. This might be useful if one uses no-reorder variant and need filters which will be applied in the same order as the Fourier transformed data.
 
-What is what (files and functions throughout implementations):
-FFT*.c
+The kernels are templated are require class FFT_Params which contains information about what kind of Fourier transform is required, size of the FFT and if user requires correct (ordered output). This class and its variants are contained in ```SM_FFT_parameters.cuh```. 
+* ```fft_exp``` is log2(fft_length)
+* ```fft_sm_required``` is the required shared memory by the SMFFT and it is calculated as (fft_length/32)*33
+* ```fft_direction``` is 0 for forward transform and 1 for inverse transform
+* ```fft_reorder``` is 0 for no-reorder 1 for reorder (correctly ordered output)
+
+### SMFFT_Stockham_C2C
+Contains GPU implementation of the autosort Stockham FFT algorithm. The algorithm produces correctly ordered output without explicit reordering step. The basic functions and usage is similar to the Cooley-Tukey implementation.
+
+### SMFFT_Stockham_R2C_C2R
+Is the same implementation as ```SMFFT_Stockham_C2C``` but extended to handle R2C and C2R Fourier transformation efficiently.
+
+## Files:
+```FFT.c```
 Host related stuff. Allocated host memory and generate random data. Also performs checks if results are correct.
 
 
-FFT-maxwell-32bit*.cu
+```FFT-GPU-32bit*.cu```
 Device related stuff + kernel. It allocates necessary memory on the device and takes care of transfers HOST <-> DEVICE. Kernel invocation is in function FFT_external_benchmark(...)
+
 FFT_external_benchmark(
-float2 d_input  - complex input (time-domain vectors)
-float2 d_output - FFT result (frequency-domain vectors)
-double FFT_time - for development
+```float2 d_input  ``` - complex input (time-domain vectors x=real; y=imaginary)
+```float2 d_output ``` - FFT result (frequency-domain vectors x=real; y=imaginary)
+```int    FFT_size ``` - FFT size
+```int    nFFTs    ``` - number of time-series to transform
+```bool   inverse  ``` - transform direction true for inverse Fourier transform
+```bool   reorder  ``` - enable reordering true for correctly ordered output
+```double *FFT_time``` - execution time
 );
+
+FFT_multiple_benchmark(...) runs multiple FFT transforms per CUDA kernel as such simulates the performance of the SMFFT when run from CUDA kernel. It takes same parameters as FFT_external_benchmark.
 
 the kernel itself FFT_GPU_external(...) requires following
-FFT_GPU_external(
-float2 d_input  - complex input (time-domain vectors)
-float2 d_output - FFT result (frequency-domain vectors)
-);
-this only transfers data to shared memory, call the FFT device function and then writes data back to global memory.
+```template<class const_params>```
+```SMFFT_DIT_external(```
+```float2 d_input```  - complex input (time-domain vectors)
+```float2 d_output``` - FFT result (frequency-domain vectors)
+```);```
+this only transfers data to shared memory then calls the FFT device function and then writes data back to global memory.
 
-Function which does the FFT is 
-do_FFT(
-float2 s_input - shared memory with time-domain vector
-);
+Function which does the FFT is ```do_SMFFT_CT_DIT```
+```do_SMFFT_CT_DIT(```
+```float2 s_input``` - shared memory with time-domain vector
+```);```
 this function perform 'in-place' FFT.
 
-Function names might differ from implementation to implementation.
 
-debug.h  -  controls what will code do. Not all switches work, some might not work fully. It is work in progress...
-DEBUG activate/forbids printing stuff to console
-CHECK activate/forbids checks for correctness of the output.
-WRITE activate/forbids saving results (like execution time) to file
+```SM_FFT_parameters.cuh```
+Contains definition of the class ```FFT_Params```.
 
-CUFFT activate/forbids cuFFT
-EXTERNAL activate/forbids shared memory FFT
-MULTIPLE activate/forbids shared memory FFT called multiple times, might not work when number of FFT to perform (first executable argument) is too low. It needs at least 100000 FFTs to be computed.
 
-CHECK_USING_FFTW - hide/unhide parts of the code needed for comparisons, which require fftw library
+```debug.h```
+controls what will code do. 
+It is work in progress...
+DEBUG activate printing stuff to console
 
-params.h  	- #define FFT_LENGTH which is FFT length to be computed it must be power-of-two (256, 512, 1024, 2048)
-			- #define FFT_EXP is exponent of FFT length (FFT_LENGTH=2^FFT_EXP)
+CUFFT enables calculation of the Fourier transform using cuFFT library
+EXTERNAL enables calculation of the Fourier transform using shared memory FFT
+MULTIPLE enables benchmark which calculates multiples FFT per kernel which removes the limitation of the global memory and better shows performance of the shared memory FFT as would be called from a CUDA kernel 
+
 timer.h - utilities
 utils_cuda.h - utilities
-utils_file.h - utilities
+
+## Benchmark
+GPU used is V100 32GB with CUDA 10.. Time is in miliseconds. First time is for FFT_multiple benchmark the second time in square brackets is for FFT_external_benchmark which is limited by device memory bandwidth. The input data size is 4GB. The number of FFTs calculated is in square brackets.
+
+FFT size    | Cooley-Tukey | Cooley-Tukey reorder | Stockham     | cuFFT 
+--------    | ------------ | -------------------- | ------------ | ----- 
+32 [16M]    | 2.04 [10.45] | 2.43 [10.45]         | NA           | NA [10.52]
+64 [8M]     | 2.54 [10.45] | 3.93 [10.45]         | NA           | NA [10.45]
+128 [4M]    | 3.45 [10.47] | 4.89 [10.47]         | NA           | NA [10.47]
+256 [2M]    | 3.95 [10.46] | 5.63 [10.46]         | 6.70 [10.46] | NA [10.55]
+512 [1M]    | 4.43 [10.40] | 6.07 [10.40]         | 6.77 [10.39] | NA [10.52]
+1024 [524k] | 5.01 [10.41] | 6.16 [10.41]         | 6.90 [10.41] | NA [10.50]
+2048 [262k] | 5.77 [10.50] | 7.72 [10.50]         | 7.63 [10.53] | NA [10.49]
+4096 [131k] | 6.80 [10.75] | 9.47 [10.75]         | 8.95 [11.52] | NA [10.65]
 
 
-What is what (implementations):
-
-FFT_CT_DIF is Cooley-Tukey FFT decimation in frequency code (DIF)
-FFT_CT_DIT is Cooley-Tukey FFT decimation in time code (DIT)
-FFT_Pease is Pease FFT DIF
-FFT_Stockham is Stockham autosort FFT
-FFT_Stockham_4elem is Stockham autosort FFT with 4 FFT elements calculated per thread. It is performing better but has higher register usage. Something similar (different algorithm) was used in convolution kernel.
-FFT_Stockham_8elem is Stockham autosort FFT with 8 FFT elements calculated per thread. It performs even better then 4elem but register usage was too high and whole convolution kernel was slower then with 4elem.
-FFT_Stockham_Radix-R is Stockham autosort FFT which can work with N=R*2^bits FFT sizes. So it is semi-non power-of-two. .cu file contain kernel for arbitrary radix, i.e. N=R^bits, but it is very slow and naive. In params.h there must be #define RADIX defined. For example 3.
-
-Karel Adamek
+Karel Adamek 2020-07-200
