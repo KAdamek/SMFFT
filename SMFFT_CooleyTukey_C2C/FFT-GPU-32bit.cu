@@ -511,10 +511,18 @@ __device__ void do_SMFFT_CT_DIT(float2 *s_input){
 		
 		Cftemp = s_input[C_read_index];
 		Dftemp = s_input[D_read_index];
-		C_DFT_value.x = Cftemp.x + W.y*Dftemp.x + W.x*Dftemp.y;
-		C_DFT_value.y = Cftemp.y + W.y*Dftemp.y - W.x*Dftemp.x;		
-		D_DFT_value.x = Cftemp.x - W.y*Dftemp.x - W.x*Dftemp.y;
-		D_DFT_value.y = Cftemp.y - W.y*Dftemp.y + W.x*Dftemp.x;
+		if(const_params::fft_direction){
+			C_DFT_value.x = Cftemp.x - W.y*Dftemp.x - W.x*Dftemp.y;
+			C_DFT_value.y = Cftemp.y - W.y*Dftemp.y + W.x*Dftemp.x;		
+			D_DFT_value.x = Cftemp.x + W.y*Dftemp.x + W.x*Dftemp.y;
+			D_DFT_value.y = Cftemp.y + W.y*Dftemp.y - W.x*Dftemp.x;
+		}
+		else {
+			C_DFT_value.x = Cftemp.x + W.y*Dftemp.x + W.x*Dftemp.y;
+			C_DFT_value.y = Cftemp.y + W.y*Dftemp.y - W.x*Dftemp.x;		
+			D_DFT_value.x = Cftemp.x - W.y*Dftemp.x - W.x*Dftemp.y;
+			D_DFT_value.y = Cftemp.y - W.y*Dftemp.y + W.x*Dftemp.x;
+		}
 		
 		s_input[A_read_index]=A_DFT_value;
 		s_input[B_read_index]=B_DFT_value;
@@ -606,8 +614,8 @@ int FFT_external_benchmark(float2 *d_input, float2 *d_output, int FFT_size, int 
 		case 128:
 			if(inverse==false && reorder==true)  SMFFT_DIT_external<FFT_128_forward><<<gridSize, blockSize>>>(d_input, d_output);
 			if(inverse==false && reorder==false) SMFFT_DIT_external<FFT_128_forward_noreorder><<<gridSize, blockSize>>>(d_input, d_output);
-			if(inverse==true && reorder==true)   SMFFT_DIT_external<FFT_128_inverse><<<gridSize, blockSize>>>(d_input, d_output);
-			if(inverse==true && reorder==false)  SMFFT_DIT_external<FFT_128_inverse_noreorder><<<gridSize, blockSize>>>(d_input, d_output);
+			if(inverse==true  && reorder==true)   SMFFT_DIT_external<FFT_128_inverse><<<gridSize, blockSize>>>(d_input, d_output);
+			if(inverse==true  && reorder==false)  SMFFT_DIT_external<FFT_128_inverse_noreorder><<<gridSize, blockSize>>>(d_input, d_output);
 			break;
 		
 		case 256:
